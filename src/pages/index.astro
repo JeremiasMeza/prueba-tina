@@ -2,10 +2,9 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { getCollection } from "astro:content";
 
-const posts = (await getCollection("posts"));
-console.log("DEBUG posts:", posts.map(p => ({ slug: p.slug, data: p.data })));
+const posts = await getCollection("posts");
 ---
-<BaseLayout title="Blog (debug)">
+<BaseLayout title="Blog">
   <h1>Blog</h1>
   <p><strong>Total posts:</strong> {posts.length}</p>
   <ul>

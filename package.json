@@ -3,13 +3,12 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
+    "dev": "tinacms dev -c \"pnpm dev:astro\"",
+    "dev:astro": "astro dev",
+    "build": "tinacms build && pnpm build:astro",
+    "build:astro": "astro build",
     "preview": "astro preview",
-    "astro": "astro",
-    "tina": "tinacms dev -c \"pnpm dev\"",
-    "dev:tina": "tinacms dev -c \"pnpm dev\"",
-    "build:tina": "tinacms build && astro build"
+    "astro": "astro"
   },
   "dependencies": {
     "astro": "^5.13.3",
