@@ -1,0 +1,124 @@
+name: Deploy via SSH (misitioahora)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+env:
+  NODE_VERSION: ${{ secrets.NODE_VERSION || '20' }}
+  BUILD_DIR: ${{ secrets.BUILD_DIR || 'dist' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build opcional (solo si hay package.json y script build)
+      - name: Setup Node
+        if: hashFiles('**/package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install deps
+        if: hashFiles('**/package.json') != ''
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable
+            pnpm i --frozen-lockfile
+          elif [ -f yarn.lock ]; then
+            yarn install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Build
+        if: hashFiles('**/package.json') != ''
+        run: |
+          if npm run | grep -q " build"; then
+            npm run build
+          elif command -v pnpm >/dev/null 2>&1 && pnpm -v >/dev/null 2>&1; then
+            pnpm build
+          elif command -v yarn >/dev/null 2>&1; then
+            yarn build
+          else
+            echo "No se encontró comando de build. Si tu proyecto es estático, ignora este paso."
+          fi
+
+      # Preparar clave SSH y known_hosts
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Conocemos la huella del host para evitar el prompt
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      # Crear release atómico en servidor (carpeta temporal)
+      - name: Create release dir on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "mkdir -p ~/deploy/releases && mkdir -p ~/deploy/incoming"
+
+      # Empaquetar build (o el contenido del repo si no hay build)
+      - name: Tar build
+        run: |
+          TS="$(date -u +%Y%m%d%H%M%S)"
+          echo "TS=$TS" >> $GITHUB_ENV
+          SRC="${{ env.BUILD_DIR }}"
+          if [ ! -d "$SRC" ]; then
+            # Si no existe la carpeta de build, usamos el repo (excluyendo .git y .github)
+            SRC="."
+          fi
+          tar -czf "release-${TS}.tar.gz" \
+            --exclude=".git" --exclude=".github" "$SRC"
+
+      # Subir el tar al servidor
+      - name: Upload tar via scp
+        run: |
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.SSH_PORT }}" \
+            "release-${TS}.tar.gz" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/deploy/incoming/"
+
+      # Desplegar: extraer y sincronizar a public_html con rsync --delete
+      - name: Deploy on server (extract & rsync)
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -lc '
+              set -euo pipefail
+              TS=$(ls -1t ~/deploy/incoming/release-*.tar.gz | head -n1 | sed "s/.*release-\([0-9]*\)\.tar\.gz/\1/")
+              REL="~/deploy/releases/${TS}"
+              mkdir -p "$REL"
+              tar -xzf "~/deploy/incoming/release-${TS}.tar.gz" -C "$REL"
+              # Descubre si el tar metió una carpeta raíz o contenidos directos
+              if [ -d "$REL/dist" ]; then SRC="$REL/dist"
+              elif [ -d "$REL/build" ]; then SRC="$REL/build"
+              else SRC="$REL"
+              fi
+              # Sincroniza a DOCROOT
+              rsync -az --delete "$SRC"/ "${SSH_DOCROOT}"/
+            ' \
+            -o SendEnv=SSH_DOCROOT \
+            -o "SetEnv=SSH_DOCROOT=${{ secrets.SSH_DOCROOT }}"
+
+      # Asegura .htaccess básico (evita listar directorios y define index)
+      - name: Ensure .htaccess
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -lc '
+              HT="${SSH_DOCROOT}/.htaccess"
+              touch "$HT"
+              if ! grep -q "Options -Indexes" "$HT"; then
+                echo "Options -Indexes" >> "$HT"
+              fi
+              if ! grep -q "DirectoryIndex" "$HT"; then
+                echo "DirectoryIndex index.html index.php" >> "$HT"
+              fi
+            ' \
+            -o SendEnv=SSH_DOCROOT \
+            -o "SetEnv=SSH_DOCROOT=${{ secrets.SSH_DOCROOT }}"
