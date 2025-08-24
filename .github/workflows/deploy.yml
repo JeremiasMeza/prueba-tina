@@ -5,9 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch: {}
 
-env:
-  NODE_VERSION: 20
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,20 +13,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        run: corepack enable
+      # pnpm fiable (evita problemas de packageManager)
+      - name: Enable & pin pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.3 --activate
+          pnpm --version
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 20
           cache: pnpm
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      # 👇 Construye TODO con tus secrets de Tina
-      - name: Build (pnpm build astro + tina)
+      # Build TODO: Tina + Astro
+      - name: Build (pnpm build)
         env:
           TINA_CLIENT_ID: ${{ secrets.TINA_CLIENT_ID }}
           TINA_TOKEN: ${{ secrets.TINA_TOKEN }}
@@ -43,29 +44,23 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Create release dir on server
+      - name: Create server dirs
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.SSH_PORT }}" \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p ~/deploy/incoming ~/deploy/releases"
 
-      # Empaquetamos SOLO el contenido de dist/ y admin/
       - name: Tar dist and admin
         run: |
           test -d dist || { echo "❌ No existe dist/. Revisa el build"; exit 1; }
-          # admin es el outputFolder de tina (por defecto 'admin')
-          if [ -d admin ]; then
-            HAVE_ADMIN=1
-          else
-            echo "ℹ️ No se encontró carpeta admin/. (¿tina/config.ts build.outputFolder distinto?)"
-            HAVE_ADMIN=0
-          fi
           TS="$(date -u +%Y%m%d%H%M%S)"; echo "TS=$TS" >> $GITHUB_ENV
           tar -czf "front-${TS}.tar.gz" -C dist .
-          if [ "$HAVE_ADMIN" = "1" ]; then
+          if [ -d admin ]; then
+            echo "HAVE_ADMIN=1" >> $GITHUB_ENV
             tar -czf "admin-${TS}.tar.gz" -C admin .
+          else
+            echo "HAVE_ADMIN=0" >> $GITHUB_ENV
           fi
-          echo "HAVE_ADMIN=$HAVE_ADMIN" >> $GITHUB_ENV
 
       - name: Upload tars
         run: |
@@ -85,18 +80,15 @@ jobs:
               TS='${{ env.TS }}'
               mkdir -p ~/deploy/releases/\$TS/front ~/deploy/releases/\$TS/admin
 
-              # Front (dist/)
               tar -xzf ~/deploy/incoming/front-\$TS.tar.gz -C ~/deploy/releases/\$TS/front
               rsync -az --delete ~/deploy/releases/\$TS/front/ \"\$DOCROOT\"/
 
-              # CMS (/admin) si existe
               if [ -f ~/deploy/incoming/admin-\$TS.tar.gz ]; then
                 tar -xzf ~/deploy/incoming/admin-\$TS.tar.gz -C ~/deploy/releases/\$TS/admin
                 mkdir -p \"\$DOCROOT\"/admin
                 rsync -az --delete ~/deploy/releases/\$TS/admin/ \"\$DOCROOT\"/admin/
               fi
 
-              # .htaccess básico
               HT=\"\$DOCROOT/.htaccess\"
               touch \"\$HT\"
               grep -q \"Options -Indexes\" \"\$HT\" || echo \"Options -Indexes\" >> \"\$HT\"
