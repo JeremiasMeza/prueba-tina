@@ -16,11 +16,9 @@ pnpm install
 Para ejecutar el proyecto en modo desarrollo con TinaCMS:
 
 ```bash
-# Opción 1: Usando el script personalizado
-npm run dev:tina
-
-# Opción 2: Ejecutar TinaCMS manualmente
-npx tinacms dev -c "npm run dev"
+npm run dev
+# o
+pnpm dev
 ```
 
 Esto iniciará:
@@ -31,7 +29,6 @@ Esto iniciará:
 
 - **Sitio web:** http://localhost:4321
 - **Administrador TinaCMS:** http://localhost:4321/admin
-- **Redirección admin:** http://localhost:4321/admin (desde `/admin.astro`)
 
 ## Configuración
 
@@ -49,10 +46,10 @@ La configuración de TinaCMS está en `tina/config.ts`. El admin se genera autom
 
 ## Scripts disponibles
 
-- `npm run dev` - Solo Astro
-- `npm run dev:tina` - Astro + TinaCMS
-- `npm run build` - Build de producción de Astro
-- `npm run build:tina` - Build de TinaCMS + Astro
+- `npm run dev` - Astro + TinaCMS
+- `npm run dev:astro` - Solo Astro
+- `npm run build` - Build de TinaCMS + Astro
+- `npm run build:astro` - Solo Astro
 
 ## Estructura del proyecto
 
@@ -63,7 +60,6 @@ La configuración de TinaCMS está en `tina/config.ts`. El admin se genera autom
 │   ├── content/
 │   │   └── posts/       # Posts del blog
 │   ├── pages/
-│   │   ├── admin.astro  # Redirección al admin
 │   │   └── blog/        # Páginas del blog
 │   └── layouts/
 ├── tina/
@@ -74,7 +70,7 @@ La configuración de TinaCMS está en `tina/config.ts`. El admin se genera autom
 ## Notas importantes
 
 1. TinaCMS requiere que se ejecute su servidor de desarrollo para que funcione el admin.
-2. El admin está disponible en `/admin` tanto como archivo estático como redirección.
+2. El admin está disponible en `/admin`.
 3. Los posts se almacenan en `src/content/posts/` en formato Markdown.
 4. Las imágenes se almacenan en `public/images/`.
 
@@ -87,7 +83,7 @@ La configuración de TinaCMS está en `tina/config.ts`. El admin se genera autom
 
 2. **Ejecutar en modo desarrollo:**
    ```bash
-   npm run dev:tina
+   npm run dev
    ```
 
 3. **Acceder al admin:**
@@ -95,7 +91,7 @@ La configuración de TinaCMS está en `tina/config.ts`. El admin se genera autom
 
 4. **Para usar solo Astro (sin TinaCMS):**
    ```bash
-   npm run dev
+   npm run dev:astro
    ```
 
 ## Troubleshooting
