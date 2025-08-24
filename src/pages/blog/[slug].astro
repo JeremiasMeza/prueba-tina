@@ -1,0 +1,28 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getEntry, getCollection } from "astro:content";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("posts");
+  return posts.map((p) => ({ params: { slug: p.slug } }));
+}
+
+const { slug } = Astro.params;
+const post = await getEntry("posts", slug!);
+
+if (!post) {
+  return Astro.redirect('/blog'); // o lanzar 404
+}
+
+const { Content } = await post.render();
+const { data } = post; // ← AQUÍ está el frontmatter
+---
+<BaseLayout title={data.title} description={data.description}>
+  <article style="max-width: 720px;">
+    {data.image && <img src={data.image} alt={data.title} style="width:100%;height:auto;border-radius:.5rem;" />}
+    <h1 style="margin-top:1rem;">{data.title}</h1>
+    <p><small>{new Date(data.date).toLocaleDateString()}</small></p>
+    <Content />
+  </article>
+  <p style="margin-top:2rem;"><a href="/blog">← Back to blog</a></p>
+</BaseLayout>
